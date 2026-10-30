@@ -242,9 +242,11 @@ if menu_option == "Upload & Analyze":
                 temp_audio_path = save_uploaded_file(uploaded_file, UPLOAD_DIR)
                 st.session_state.last_analyzed_file = temp_audio_path
                 
-                # STEP 2: Whisper speech-to-text
-                model_label = os.getenv("WHISPER_MODEL", "tiny").capitalize()
-                status_text.text(f"Transcribing speech with OpenAI Whisper ({model_label})...")
+                # STEP 2: Speech-to-text
+                api_key_check = os.getenv("GEMINI_API_KEY", "").strip()
+                has_gemini = bool(api_key_check and not api_key_check.lower().startswith("your_") and len(api_key_check) >= 15)
+                model_label = "Google Gemini AI (Cloud)" if has_gemini else f"OpenAI Whisper ({os.getenv('WHISPER_MODEL', 'tiny').capitalize()})"
+                status_text.text(f"Transcribing speech with {model_label}...")
                 progress_bar.progress(30)
                 transcript = transcribe_audio(temp_audio_path)
                 
@@ -356,11 +358,14 @@ if menu_option == "Upload & Analyze":
                 progress_bar.progress(100)
                 status_text.empty()
                 st.success("Analysis Complete!")
+                st.rerun()
                 
             except Exception as e:
                 progress_bar.empty()
                 status_text.empty()
                 st.error(f"Analysis Pipeline Failure: {e}")
+                import traceback
+                st.code(traceback.format_exc())
                 st.session_state.analysis_results = None
 
     # 2. Results Dashboard
