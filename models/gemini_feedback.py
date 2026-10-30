@@ -91,7 +91,6 @@ def generate_educational_fallback(
         missing_concepts = ["Core structural components", "Practical industry applications", "Associated terminology"]
 
     if similarity_score >= 85.0:
-        # Filter down if score is excellent
         missing_concepts = [f"Advanced applications or sub-areas of {topic}"]
 
     # 5. Suggestions
@@ -117,6 +116,7 @@ def generate_educational_fallback(
         comm_tips.append("Maintain your current vocal cadence, pitch modulation, and confidence level.")
 
     # Format output as a nice Markdown report
+    overall_rating = "Excellent" if similarity_score >= 80.0 else "Good" if similarity_score >= 60.0 else "Average" if similarity_score >= 40.0 else "Poor"
     feedback_md = f"""### Summary
 {summary}
 
@@ -136,7 +136,7 @@ def generate_educational_fallback(
 {chr(10).join([f"- {t}" for t in comm_tips])}
 
 ### Overall Feedback
-Your overall understanding of **{topic}** is rated as **{ "Excellent" if similarity_score >= 80.0 else "Good" if similarity_score >= 60.0 else "Average" if similarity_score >= 40.0 else "Poor" }**. By working on the suggestions and speech tips listed above, you will be well-prepared to explain this concept in job interviews, university vivas, and technical presentations. Keep practicing!"""
+Your overall understanding of **{topic}** is rated as **{overall_rating}**. By working on the suggestions and speech tips listed above, you will be well-prepared to explain this concept in job interviews, university vivas, and technical presentations. Keep practicing!"""
     return feedback_md
 
 def generate_ai_feedback(
@@ -147,14 +147,19 @@ def generate_ai_feedback(
 ) -> str:
     """
     Generates educational and encouraging feedback using the Google Gemini API.
-    Gracefully falls back to a rule-based generator if API key is missing or calls fail.
+    Gracefully falls back to a rule-based generator if API key is missing, invalid, or calls time out.
     """
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        print("Gemini API Key missing. Generating educational fallback feedback...")
+    api_key = os.getenv("GEMINI_API_KEY", "").strip()
+    is_placeholder = (
+        not api_key 
+        or api_key.lower().startswith("your_") 
+        or "api_key" in api_key.lower() 
+        or len(api_key) < 15
+    )
+    if is_placeholder:
+        print("Gemini API Key is missing or placeholder. Generating educational fallback feedback...")
         return generate_educational_fallback(topic, similarity_score, speech_metrics)
 
-    # Prompt constructing
     prompt = f"""
     You are an expert academic evaluator, university professor, and communication coach.
     Provide constructive, encouraging, and detailed feedback for a student explaining a technical topic.
@@ -175,7 +180,7 @@ def generate_ai_feedback(
     [A brief paragraph summarizing what the student explained and how well they understood the concept.]
     
     ### Strengths
-    [Bullet points highlighting conceptual or communication-related strengths (e.g. good vocabulary, correct flow, perfect speed, low fillers).]
+    [Bullet points highlighting conceptual or communication-related strengths.]
     
     ### Weaknesses
     [Bullet points detailing conceptual gaps or speech flow delivery issues.]
@@ -190,20 +195,17 @@ def generate_ai_feedback(
     [Bullet points showing how to improve speech delivery, e.g., speed, fillers, or pauses.]
     
     ### Overall Feedback
-    [An encouraging wrap-up summarizing the performance category (Excellent/Good/Average/Poor) and motivating the student to practice.]
+    [An encouraging wrap-up summarizing the performance category and motivating the student to practice.]
     
     Be supportive, educational, professional, and clear. Do not include extra headings, intro, or outro text outside the requested sections.
     """
 
     try:
-        # Configure Gemini API
         genai.configure(api_key=api_key)
-        
-        # We use gemini-1.5-flash as the standard, efficient model for text generation
         model = genai.GenerativeModel("gemini-1.5-flash")
         
-        print("Sending request to Google Gemini API...")
-        response = model.generate_content(prompt)
+        print("Sending request to Google Gemini API (timeout 8s)...")
+        response = model.generate_content(prompt, request_options={"timeout": 8.0})
         feedback_text = response.text.strip()
         
         if not feedback_text:

@@ -17,19 +17,26 @@ _semantic_model = None
 def load_semantic_model() -> SentenceTransformer:
     """
     Loads and caches the Sentence-BERT (all-MiniLM-L6-v2) model in-memory.
+    Uses local_files_only=True first to avoid hanging on network requests.
     """
     global _semantic_model
     if _semantic_model is not None:
         return _semantic_model
     
     try:
-        print("Loading Sentence-BERT model (all-MiniLM-L6-v2)...")
-        _semantic_model = SentenceTransformer('all-MiniLM-L6-v2')
-        print("Sentence-BERT model loaded successfully.")
+        print("Loading Sentence-BERT model (all-MiniLM-L6-v2) from local cache...")
+        _semantic_model = SentenceTransformer('all-MiniLM-L6-v2', local_files_only=True)
+        print("Sentence-BERT model loaded successfully from cache.")
         return _semantic_model
-    except Exception as e:
-        print(f"Error loading Sentence-BERT model: {e}")
-        raise
+    except Exception as cache_err:
+        print(f"Local cache lookup failed ({cache_err}). Loading from Hugging Face hub...")
+        try:
+            _semantic_model = SentenceTransformer('all-MiniLM-L6-v2')
+            print("Sentence-BERT model downloaded and loaded successfully.")
+            return _semantic_model
+        except Exception as e:
+            print(f"Error loading Sentence-BERT model: {e}")
+            raise
 
 def calculate_cosine_similarity(vec1: np.ndarray, vec2: np.ndarray) -> float:
     """

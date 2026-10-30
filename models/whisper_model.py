@@ -4,7 +4,7 @@ import gc
 import torch
 from typing import Optional
 
-# Limit PyTorch CPU threads to conserve memory in low-RAM environments (like Render free tier)
+# Limit PyTorch CPU threads to conserve memory in containerized / low-spec environments
 try:
     torch.set_num_threads(1)
 except Exception:
@@ -14,14 +14,13 @@ except Exception:
 _whisper_model = None
 
 def get_whisper_model_name() -> str:
-    """Returns the configured Whisper model name, defaulting to 'tiny' for memory efficiency."""
+    """Returns configured model, defaulting to 'tiny' for low memory."""
     return os.getenv("WHISPER_MODEL", "tiny")
 
 def load_whisper_model(model_name: Optional[str] = None):
     """
     Loads and caches the Whisper model in-memory.
-    Automatically checks for CPU/GPU availability.
-    Falls back to 'tiny' if a larger model fails to load due to memory.
+    If the requested model fails (e.g. file missing / network issue), automatically falls back to an alternative.
     """
     global _whisper_model
     if _whisper_model is not None:
@@ -30,7 +29,6 @@ def load_whisper_model(model_name: Optional[str] = None):
     if model_name is None:
         model_name = get_whisper_model_name()
     
-    # Try to import whisper inside function to allow import errors to be caught gracefully
     try:
         import whisper
     except ImportError:
@@ -39,22 +37,24 @@ def load_whisper_model(model_name: Optional[str] = None):
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Loading Whisper '{model_name}' model on device: {device}...")
+    
     try:
         _whisper_model = whisper.load_model(model_name, device=device)
         print(f"Whisper '{model_name}' model loaded successfully.")
         return _whisper_model
-    except Exception as e:
-        print(f"Failed to load Whisper model '{model_name}': {e}")
-        if model_name != "tiny":
-            print("Attempting fallback to lightweight 'tiny' model...")
-            try:
-                gc.collect()
-                _whisper_model = whisper.load_model("tiny", device=device)
-                print("Fallback Whisper 'tiny' model loaded successfully.")
-                return _whisper_model
-            except Exception as fallback_err:
-                print(f"Fallback to 'tiny' model also failed: {fallback_err}")
-        raise
+    except Exception as primary_err:
+        print(f"Failed to load Whisper '{model_name}': {primary_err}")
+        # Try fallback: if tiny failed try base, if base failed try tiny
+        fallback_model = "base" if model_name == "tiny" else "tiny"
+        print(f"Attempting fallback to '{fallback_model}' model...")
+        try:
+            gc.collect()
+            _whisper_model = whisper.load_model(fallback_model, device=device)
+            print(f"Fallback Whisper '{fallback_model}' model loaded successfully.")
+            return _whisper_model
+        except Exception as fallback_err:
+            print(f"Fallback to '{fallback_model}' also failed: {fallback_err}")
+            raise primary_err
 
 def transcribe_audio(file_path: str, model_name: Optional[str] = None) -> str:
     """
@@ -64,7 +64,6 @@ def transcribe_audio(file_path: str, model_name: Optional[str] = None) -> str:
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"Audio file not found at: {file_path}")
 
-    # Check file size (extremely small files might be empty/corrupt)
     if os.path.getsize(file_path) == 0:
         raise ValueError("The uploaded audio file is empty (0 bytes).")
         
@@ -72,7 +71,7 @@ def transcribe_audio(file_path: str, model_name: Optional[str] = None) -> str:
         model = load_whisper_model(model_name)
         print(f"Transcribing audio file: {file_path}...")
         
-        # Load audio using librosa at 16000Hz to bypass Whisper's internal command-line ffmpeg dependency
+        # Load audio using librosa at 16000Hz
         import librosa
         try:
             audio_data, _ = librosa.load(file_path, sr=16000)
@@ -82,8 +81,6 @@ def transcribe_audio(file_path: str, model_name: Optional[str] = None) -> str:
                 "Please verify that the audio file is valid, and that ffmpeg is installed if using complex codecs."
             )
         
-        # Perform transcription
-        # fp16=False enforces float32 execution (prevents warnings on CPU environments)
         device = "cuda" if torch.cuda.is_available() else "cpu"
         use_fp16 = (device == "cuda")
         
