@@ -9,3 +9,5 @@ services:
         sync: false
       - key: DATABASE_PATH
         value: database/vbcua.db
+      - key: WHISPER_MODEL
+        value: tiny

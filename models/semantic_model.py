@@ -1,6 +1,15 @@
+import os
+import gc
+import torch
 import numpy as np
 from typing import Dict, Any
 from sentence_transformers import SentenceTransformer
+
+# Limit PyTorch CPU threads to conserve memory in containerized environments
+try:
+    torch.set_num_threads(1)
+except Exception:
+    pass
 
 # In-memory cache for the SentenceTransformer model
 _semantic_model = None
@@ -60,34 +69,37 @@ def evaluate_understanding(student_transcript: str, reference_text: str) -> Dict
         student_emb = embeddings[0]
         ref_emb = embeddings[1]
         
-        # Calculate cosine similarity
+        # Calculate Cosine Similarity
         similarity = calculate_cosine_similarity(student_emb, ref_emb)
         
-        # Convert similarity to percentage (cosine similarity ranges from -1 to 1;
-        # however, in sentence transformers, negative similarities are rare for meaningful texts.
-        # We'll normalize it to a 0-100 range, clamping at 0 and 100)
-        similarity_percentage = max(0.0, min(100.0, similarity * 100.0))
+        # Free memory buffers immediately
+        del embeddings, student_emb, ref_emb
+        gc.collect()
         
-        # Determine understanding level
-        # Excellent: >=80%, Good: >=60%, Average: >=40%, Poor: <40%
-        if similarity_percentage >= 80.0:
+        # Bound similarity between 0.0 and 1.0, then scale to 100
+        bounded_sim = max(0.0, min(1.0, float(similarity)))
+        score_percentage = round(bounded_sim * 100.0, 2)
+        
+        # Determine qualitative understanding level based on academic thresholds
+        if score_percentage >= 80.0:
             level = "Excellent"
-        elif similarity_percentage >= 60.0:
+        elif score_percentage >= 65.0:
             level = "Good"
-        elif similarity_percentage >= 40.0:
+        elif score_percentage >= 50.0:
             level = "Average"
         else:
             level = "Poor"
             
         return {
-            "similarity_score": round(similarity_percentage, 2),
-            "understanding_level": level
+            "similarity_score": score_percentage,
+            "understanding_level": level,
+            "error": None
         }
         
     except Exception as e:
-        print(f"Error during semantic similarity evaluation: {e}")
+        print(f"Semantic evaluation failed: {e}")
         return {
             "similarity_score": 0.0,
             "understanding_level": "Poor",
-            "error": f"Evaluation error: {str(e)}"
+            "error": str(e)
         }

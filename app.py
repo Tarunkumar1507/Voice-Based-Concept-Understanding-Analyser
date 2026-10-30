@@ -243,7 +243,8 @@ if menu_option == "Upload & Analyze":
                 st.session_state.last_analyzed_file = temp_audio_path
                 
                 # STEP 2: Whisper speech-to-text
-                status_text.text("Transcribing speech with OpenAI Whisper (Base)...")
+                model_label = os.getenv("WHISPER_MODEL", "tiny").capitalize()
+                status_text.text(f"Transcribing speech with OpenAI Whisper ({model_label})...")
                 progress_bar.progress(30)
                 transcript = transcribe_audio(temp_audio_path)
                 
