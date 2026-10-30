@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: voice-concept-analyser
+    env: docker
+    plan: free
+    dockerfilePath: Dockerfile
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: DATABASE_PATH
+        value: database/vbcua.db

@@ -1,0 +1,15 @@
+.git
+.gitignore
+.venv
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.env
+database/*.db
+audio/uploads/*
+!audio/uploads/.gitkeep
+output/*
+!output/.gitkeep
+.cache
+whisper

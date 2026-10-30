@@ -1,0 +1,15 @@
+streamlit>=1.30.0
+openai-whisper
+sentence-transformers
+google-generativeai
+torch
+transformers
+numpy
+pandas
+matplotlib
+librosa
+soundfile
+scikit-learn
+reportlab
+python-dotenv
+nltk
